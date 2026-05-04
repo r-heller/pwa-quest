@@ -1,0 +1,60 @@
+name: Deploy to GitHub Pages
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+# GitHub Pages requires these permissions and a single in-flight deployment.
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        env:
+          # The site is published at https://<user>.github.io/<repo>/, so Vite
+          # needs to emit asset URLs prefixed with the repo name.
+          BASE_PATH: /${{ github.event.repository.name }}/
+        run: npm run build
+
+      - name: SPA fallback
+        # GitHub Pages serves 404.html for unknown paths. Copying index.html
+        # there means deep-links and refreshes still load the app shell — the
+        # service worker then takes over offline.
+        run: cp dist/index.html dist/404.html
+
+      - uses: actions/configure-pages@v6
+
+      - uses: actions/upload-pages-artifact@v5
+        with:
+          path: dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v5
